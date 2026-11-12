@@ -468,12 +468,41 @@ jobs:
           grep -n 'FFI.startServer(configPath' "$KOTLIN" | sed 's/\(.\{80\}\).*/\1.../'
           grep -n 'customClientConfig:' "$DART" | sed 's/\(.\{80\}\).*/\1.../'
 
-      - name: change app id to custom
-        if: env.androidappid != 'com.carriez.flutter_hbb'
-        continue-on-error: true
+      - name: Set custom Android application ID
         shell: bash
         run: |
-          sed -i -e 's|com.carriez.flutter_hbb|${{ env.androidappid }}|' ./flutter/android/app/build.gradle
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          app_id = os.environ.get("androidappid", "")
+          pattern = r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+"
+          if not re.fullmatch(pattern, app_id):
+              raise SystemExit("Invalid androidappid")
+
+          path = Path("flutter/android/app/build.gradle")
+          text = path.read_text()
+
+          text, count = re.subn(
+              r'''(?m)^(\s*namespace\s*(?:=\s*)?)["'][^"']+["']''',
+              lambda m: m.group(1) + '"com.carriez.flutter_hbb"',
+              text
+          )
+          if count != 1:
+              raise SystemExit("Expected exactly one namespace declaration")
+
+          text, count = re.subn(
+              r'''(?m)^(\s*applicationId\s*(?:=\s*)?)["'][^"']+["']''',
+              lambda m: m.group(1) + '"' + app_id + '"',
+              text
+          )
+          if count != 1:
+              raise SystemExit("Expected exactly one applicationId declaration")
+
+          path.write_text(text)
+          print("Android applicationId and namespace configured")
+          PY
 
       - name: change download link to custom
         if: env.downloadLink != 'https://rustdesk.com/download'
